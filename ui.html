@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>多语言替换</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 12px;
+      }
+      h3 {
+        margin-top: 0;
+      }
+      input[type="file"] {
+        margin: 10px 0;
+      }
+      select,
+      button {
+        margin-top: 10px;
+        width: 100%;
+        padding: 6px;
+      }
+      #status {
+        margin-top: 10px;
+        color: #555;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h3>多语言替换工具</h3>
+    <input type="file" id="fileInput" accept=".csv,.xlsx" />
+    <select id="langSelect" disabled></select>
+    <button id="applyBtn" disabled>应用翻译</button>
+    <button id="cancelBtn">取消</button>
+    <div id="status">请先上传 CSV / Excel 表格</div>
+
+    <script>
+      let translationsMap = {};
+      let selectedLang = "";
+
+      document
+        .getElementById("fileInput")
+        .addEventListener("change", async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+
+          try {
+            const data = await file.arrayBuffer();
+            const workbook = XLSX.read(data, { type: "array" });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet);
+
+            // rows: [{key: "title", zh_CN: "欢迎使用", en_US: "Welcome"} ...]
+            if (rows.length === 0) {
+              document.getElementById("status").textContent = "❌ 表格为空";
+              return;
+            }
+
+            const langs = Object.keys(rows[0]).filter((k) => k !== "key");
+            if (langs.length === 0) {
+              document.getElementById("status").textContent =
+                "❌ 没有找到语言列";
+              return;
+            }
+
+            // 生成语言下拉框
+            const langSelect = document.getElementById("langSelect");
+            langSelect.innerHTML = langs
+              .map((l) => `<option value="${l}">${l}</option>`)
+              .join("");
+            langSelect.disabled = false;
+            selectedLang = langs[0];
+
+            langSelect.onchange = (ev) => {
+              selectedLang = ev.target.value;
+            };
+
+            // 保存翻译表
+            translationsMap = {};
+            rows.forEach((r) => {
+              translationsMap[r.key] = r;
+            });
+
+            document.getElementById("applyBtn").disabled = false;
+            document.getElementById(
+              "status"
+            ).textContent = `✅ 已加载表格，检测到语言: ${langs.join(", ")}`;
+          } catch (err) {
+            document.getElementById("status").textContent =
+              "❌ 文件解析失败: " + err.message;
+          }
+        });
+
+      document.getElementById("applyBtn").onclick = () => {
+        const translations = {};
+        for (let key in translationsMap) {
+          translations[key] = translationsMap[key][selectedLang];
+        }
+        parent.postMessage(
+          { pluginMessage: { type: "apply-translations", translations } },
+          "*"
+        );
+      };
+
+      document.getElementById("cancelBtn").onclick = () => {
+        parent.postMessage({ pluginMessage: { type: "cancel" } }, "*");
+      };
+    </script>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "多语言替换工具",
+  "id": "1550362353173249012",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["https://cdn.jsdelivr.net"]
+  }
+}

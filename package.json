@@ -1,0 +1,12 @@
+{
+  "name": "multi-lang-plugin",
+  "version": "1.0.1",
+  "description": "Figma plugin for replacing text with multiple languages",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.117.0"
+  }
+}
