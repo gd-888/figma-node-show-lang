@@ -23,13 +23,13 @@
 创建一个包含以下列的 Excel 或 CSV 文件：
 
 - `key`: 文本标识符（必须与 Figma 中的文本图层名称匹配）
-- 语言列: 每种语言一列，如 `zh_CN`、`en_US`、`ja_JP` 等
+- 语言列: 每种语言一列，如 `zh_CN`、`en_US`、`ko_KR`、`fr_FR`、`de_DE` 等
 
 示例：
-| key | zh_CN | en_US | ja_JP |
-|------------|----------|------------|-----------|
-| title | 欢迎使用 | Welcome | ようこそ |
-| subtitle | 产品介绍 | Product Intro | 製品紹介 |
+| key | zh_CN | en_US | ko_KR | fr_FR | de_DE |
+|------------|----------|-----------|-----------|-----------|-----------|
+| title | 欢迎使用 | Welcome | 환영합니다 | Bienvenue | Willkommen |
+| subtitle | 产品介绍 | Product Intro | 제품 소개 | Présentation | Produktvorstellung |
 
 ### 3. 使用插件
 

@@ -103,4 +103,4 @@ figma.ui.onmessage = async (msg) => {
         figma.closePlugin();
     }
 };
-figma.showUI(__html__, { width: 360, height: 260 });
+figma.showUI(__html__, { width: 400, height: 300 });

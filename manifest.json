@@ -1,6 +1,5 @@
 {
   "name": "figma-node-show-lang",
-  "id": "1550362353173249012",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "ui.html",
