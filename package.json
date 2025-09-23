@@ -1,5 +1,5 @@
 {
-  "name": "multi-lang-plugin",
+  "name": "figma-node-show-lang",
   "version": "1.0.1",
   "description": "Figma plugin for replacing text with multiple languages",
   "scripts": {

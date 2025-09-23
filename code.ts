@@ -57,19 +57,45 @@ function rgbFromHex(hex: string): RGB {
 async function applyRichText(node: TextNode, config: string) {
   const fragments = parseRichTextConfig(config);
 
+  // 获取节点原有的字体信息
+  let originalFontFamily = "Roboto";
+  let originalFontStyle = "Regular";
+  try {
+    // 尝试获取第一个字符的字体作为原始字体
+    if (node.characters.length > 0) {
+      const firstCharFont = node.getRangeFontName(0, 1);
+      if (firstCharFont !== figma.mixed && firstCharFont.family) {
+        originalFontFamily = firstCharFont.family;
+        originalFontStyle = firstCharFont.style;
+      }
+    }
+  } catch (e) {
+    // 如果无法获取原始字体，使用默认字体
+    originalFontFamily = "Roboto";
+    originalFontStyle = "Regular";
+  }
+
+  // 解析原始样式，确定基础样式
+  const isOriginalBold = originalFontStyle.includes("Bold");
+  const isOriginalItalic = originalFontStyle.includes("Italic");
+
   // 收集所有需要的字体
   const fontsToLoad: FontName[] = [];
   for (const frag of fragments) {
+    // 基于原始样式和新样式确定最终样式
+    const isBold = frag.bold || isOriginalBold;
+    const isItalic = frag.italic || isOriginalItalic;
+
     const fontStyle =
-      frag.bold && frag.italic
+      isBold && isItalic
         ? "Bold Italic"
-        : frag.bold
+        : isBold
         ? "Bold"
-        : frag.italic
+        : isItalic
         ? "Italic"
         : "Regular";
 
-    fontsToLoad.push({ family: "Roboto", style: fontStyle });
+    fontsToLoad.push({ family: originalFontFamily, style: fontStyle });
   }
 
   // 加载所有需要的字体
@@ -94,17 +120,24 @@ async function applyRichText(node: TextNode, config: string) {
     // 设置字号
     node.setRangeFontSize(start, end, frag.size);
 
-    // 设置字体（加粗/斜体）
+    // 设置字体（加粗/斜体），优先使用原有字体
+    // 基于原始样式和新样式确定最终样式
+    const isBold = frag.bold || isOriginalBold;
+    const isItalic = frag.italic || isOriginalItalic;
+
     const fontStyle =
-      frag.bold && frag.italic
+      isBold && isItalic
         ? "Bold Italic"
-        : frag.bold
+        : isBold
         ? "Bold"
-        : frag.italic
+        : isItalic
         ? "Italic"
         : "Regular";
 
-    node.setRangeFontName(start, end, { family: "Roboto", style: fontStyle });
+    node.setRangeFontName(start, end, {
+      family: originalFontFamily,
+      style: fontStyle,
+    });
 
     offset = end;
   }
