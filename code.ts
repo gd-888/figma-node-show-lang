@@ -8,6 +8,8 @@ interface RichTextFragment {
   size: number;
   bold: boolean;
   italic: boolean;
+  fontFamily: string; // 新增字段
+  fontStyle: string; // 新增字段
 }
 
 async function loadFontsForNode(node: TextNode) {
@@ -39,10 +41,12 @@ function parseRichTextConfig(config: string): RichTextFragment[] {
     const [text, color, size, bold, italic] = part.split("#");
     return {
       text: text || "",
-      color: "#" + color || "#000000",
-      size: size ? parseInt(size, 10) : 16,
+      color: color || "", // 不设置默认颜色，稍后在applyRichText中处理
+      size: size ? parseInt(size, 10) : 0, // 使用0表示未设置，稍后在applyRichText中处理
       bold: bold === "B",
       italic: italic === "I",
+      fontFamily: "", // 不设置默认字体，稍后在applyRichText中处理
+      fontStyle: "", // 不设置默认样式，稍后在applyRichText中处理
     };
   });
 }
@@ -75,6 +79,31 @@ async function applyRichText(node: TextNode, config: string) {
     originalFontStyle = "Regular";
   }
 
+  // 获取节点原有的字号和颜色信息
+  let originalFontSize = 16;
+  let originalColor: RGB = { r: 1, g: 1, b: 1 }; // 默认使用白色而不是黑色
+  try {
+    // 尝试获取第一个字符的字号和颜色作为原始设置
+    if (node.characters.length > 0) {
+      const firstCharFontSize = node.getRangeFontSize(0, 1);
+      if (firstCharFontSize !== figma.mixed) {
+        originalFontSize = firstCharFontSize;
+      }
+
+      const firstCharFills = node.getRangeFills(0, 1);
+      if (firstCharFills !== figma.mixed && firstCharFills.length > 0) {
+        const fill = firstCharFills[0];
+        if (fill.type === "SOLID") {
+          originalColor = fill.color;
+        }
+      }
+    }
+  } catch (e) {
+    // 如果无法获取原始字号和颜色，使用白色作为默认设置
+    originalFontSize = 16;
+    originalColor = { r: 1, g: 1, b: 1 }; // 白色
+  }
+
   // 解析原始样式，确定基础样式
   const isOriginalBold = originalFontStyle.includes("Bold");
   const isOriginalItalic = originalFontStyle.includes("Italic");
@@ -95,7 +124,10 @@ async function applyRichText(node: TextNode, config: string) {
         ? "Italic"
         : "Regular";
 
-    fontsToLoad.push({ family: originalFontFamily, style: fontStyle });
+    // 使用节点原有的字体族，或配置中指定的字体族（如果有的话）
+    const fontFamily = frag.fontFamily || originalFontFamily;
+
+    fontsToLoad.push({ family: fontFamily, style: fontStyle });
   }
 
   // 加载所有需要的字体
@@ -112,13 +144,19 @@ async function applyRichText(node: TextNode, config: string) {
     const start = offset;
     const end = start + frag.text.length;
 
-    // 设置颜色
-    node.setRangeFills(start, end, [
-      { type: "SOLID", color: rgbFromHex(frag.color) },
-    ]);
+    // 设置颜色，如果配置中没有指定颜色则使用原有颜色
+    const colorToApply =
+      frag.color === "" && frag.text !== ""
+        ? originalColor
+        : rgbFromHex("#" + frag.color);
 
-    // 设置字号
-    node.setRangeFontSize(start, end, frag.size);
+    node.setRangeFills(start, end, [{ type: "SOLID", color: colorToApply }]);
+
+    // 设置字号，如果配置中没有指定字号则使用原有字号
+    const fontSizeToApply =
+      frag.size === 0 && frag.text !== "" ? originalFontSize : frag.size;
+
+    node.setRangeFontSize(start, end, fontSizeToApply);
 
     // 设置字体（加粗/斜体），优先使用原有字体
     // 基于原始样式和新样式确定最终样式
@@ -134,8 +172,11 @@ async function applyRichText(node: TextNode, config: string) {
         ? "Italic"
         : "Regular";
 
+    // 使用节点原有的字体族，或配置中指定的字体族（如果有的话）
+    const fontFamily = frag.fontFamily || originalFontFamily;
+
     node.setRangeFontName(start, end, {
-      family: originalFontFamily,
+      family: fontFamily,
       style: fontStyle,
     });
 

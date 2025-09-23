@@ -22,10 +22,12 @@ function parseRichTextConfig(config) {
         const [text, color, size, bold, italic] = part.split("#");
         return {
             text: text || "",
-            color: "#" + color || "#000000",
-            size: size ? parseInt(size, 10) : 16,
+            color: color || "",
+            size: size ? parseInt(size, 10) : 0,
             bold: bold === "B",
             italic: italic === "I",
+            fontFamily: "",
+            fontStyle: "",
         };
     });
 }
@@ -37,16 +39,57 @@ function rgbFromHex(hex) {
 }
 async function applyRichText(node, config) {
     const fragments = parseRichTextConfig(config);
+    let originalFontFamily = "Roboto";
+    let originalFontStyle = "Regular";
+    try {
+        if (node.characters.length > 0) {
+            const firstCharFont = node.getRangeFontName(0, 1);
+            if (firstCharFont !== figma.mixed && firstCharFont.family) {
+                originalFontFamily = firstCharFont.family;
+                originalFontStyle = firstCharFont.style;
+            }
+        }
+    }
+    catch (e) {
+        originalFontFamily = "Roboto";
+        originalFontStyle = "Regular";
+    }
+    let originalFontSize = 16;
+    let originalColor = { r: 1, g: 1, b: 1 };
+    try {
+        if (node.characters.length > 0) {
+            const firstCharFontSize = node.getRangeFontSize(0, 1);
+            if (firstCharFontSize !== figma.mixed) {
+                originalFontSize = firstCharFontSize;
+            }
+            const firstCharFills = node.getRangeFills(0, 1);
+            if (firstCharFills !== figma.mixed && firstCharFills.length > 0) {
+                const fill = firstCharFills[0];
+                if (fill.type === "SOLID") {
+                    originalColor = fill.color;
+                }
+            }
+        }
+    }
+    catch (e) {
+        originalFontSize = 16;
+        originalColor = { r: 1, g: 1, b: 1 };
+    }
+    const isOriginalBold = originalFontStyle.includes("Bold");
+    const isOriginalItalic = originalFontStyle.includes("Italic");
     const fontsToLoad = [];
     for (const frag of fragments) {
-        const fontStyle = frag.bold && frag.italic
+        const isBold = frag.bold || isOriginalBold;
+        const isItalic = frag.italic || isOriginalItalic;
+        const fontStyle = isBold && isItalic
             ? "Bold Italic"
-            : frag.bold
+            : isBold
                 ? "Bold"
-                : frag.italic
+                : isItalic
                     ? "Italic"
                     : "Regular";
-        fontsToLoad.push({ family: "Roboto", style: fontStyle });
+        const fontFamily = frag.fontFamily || originalFontFamily;
+        fontsToLoad.push({ family: fontFamily, style: fontStyle });
     }
     const loadPromises = fontsToLoad.map((font) => figma.loadFontAsync(font));
     await Promise.all(loadPromises);
@@ -56,18 +99,26 @@ async function applyRichText(node, config) {
     for (const frag of fragments) {
         const start = offset;
         const end = start + frag.text.length;
-        node.setRangeFills(start, end, [
-            { type: "SOLID", color: rgbFromHex(frag.color) },
-        ]);
-        node.setRangeFontSize(start, end, frag.size);
-        const fontStyle = frag.bold && frag.italic
+        const colorToApply = frag.color === "" && frag.text !== ""
+            ? originalColor
+            : rgbFromHex("#" + frag.color);
+        node.setRangeFills(start, end, [{ type: "SOLID", color: colorToApply }]);
+        const fontSizeToApply = frag.size === 0 && frag.text !== "" ? originalFontSize : frag.size;
+        node.setRangeFontSize(start, end, fontSizeToApply);
+        const isBold = frag.bold || isOriginalBold;
+        const isItalic = frag.italic || isOriginalItalic;
+        const fontStyle = isBold && isItalic
             ? "Bold Italic"
-            : frag.bold
+            : isBold
                 ? "Bold"
-                : frag.italic
+                : isItalic
                     ? "Italic"
                     : "Regular";
-        node.setRangeFontName(start, end, { family: "Roboto", style: fontStyle });
+        const fontFamily = frag.fontFamily || originalFontFamily;
+        node.setRangeFontName(start, end, {
+            family: fontFamily,
+            style: fontStyle,
+        });
         offset = end;
     }
 }
