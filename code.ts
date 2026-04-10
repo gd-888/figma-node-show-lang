@@ -119,10 +119,10 @@ async function applyRichText(node: TextNode, config: string) {
       isBold && isItalic
         ? "Bold Italic"
         : isBold
-        ? "Bold"
-        : isItalic
-        ? "Italic"
-        : "Regular";
+          ? "Bold"
+          : isItalic
+            ? "Italic"
+            : "Regular";
 
     // 使用节点原有的字体族，或配置中指定的字体族（如果有的话）
     const fontFamily = frag.fontFamily || originalFontFamily;
@@ -167,10 +167,10 @@ async function applyRichText(node: TextNode, config: string) {
       isBold && isItalic
         ? "Bold Italic"
         : isBold
-        ? "Bold"
-        : isItalic
-        ? "Italic"
-        : "Regular";
+          ? "Bold"
+          : isItalic
+            ? "Italic"
+            : "Regular";
 
     // 使用节点原有的字体族，或配置中指定的字体族（如果有的话）
     const fontFamily = frag.fontFamily || originalFontFamily;
@@ -219,4 +219,4 @@ figma.ui.onmessage = async (msg) => {
 };
 
 // 打开 UI
-figma.showUI(__html__, { width: 400, height: 300 });
+figma.showUI(__html__, { width: 400, height: 360 });

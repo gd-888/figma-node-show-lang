@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -31,6 +31,17 @@
   <body>
     <h3>多语言替换工具</h3>
     <input type="file" id="fileInput" accept=".csv,.xlsx" />
+    <label
+      for="sheetSelect"
+      style="display: block; margin-top: 8px; font-size: 12px; color: #333"
+      >工作表</label
+    >
+    <select id="sheetSelect" disabled></select>
+    <label
+      for="langSelect"
+      style="display: block; margin-top: 8px; font-size: 12px; color: #333"
+      >语言列</label
+    >
     <select id="langSelect" disabled></select>
     <button id="applyBtn" disabled>应用翻译</button>
     <button id="cancelBtn">取消</button>
@@ -39,6 +50,102 @@
     <script>
       let translationsMap = {};
       let selectedLang = "";
+      let currentWorkbook = null;
+
+      const sheetSelect = document.getElementById("sheetSelect");
+      const langSelect = document.getElementById("langSelect");
+      const applyBtn = document.getElementById("applyBtn");
+      const statusEl = document.getElementById("status");
+
+      function fillSelectOptions(selectEl, values) {
+        selectEl.innerHTML = "";
+        values.forEach((v) => {
+          const opt = document.createElement("option");
+          opt.value = v;
+          opt.textContent = v;
+          selectEl.appendChild(opt);
+        });
+        selectEl.disabled = values.length === 0;
+      }
+
+      function fillLangSelect(langs) {
+        fillSelectOptions(langSelect, langs);
+        selectedLang = langs[0] || "";
+      }
+
+      /** 表头中标识列：列名须严格为 key 或 HEAD（区分大小写），优先 key */
+      function resolveIdColumn(headerKeys) {
+        const keyCol = headerKeys.find((k) => String(k) === "key");
+        if (keyCol !== undefined) return keyCol;
+        const headCol = headerKeys.find((k) => String(k) === "HEAD");
+        if (headCol !== undefined) return headCol;
+        return null;
+      }
+
+      function loadSheetByName(sheetName) {
+        if (!currentWorkbook || !sheetName) return false;
+        const sheet = currentWorkbook.Sheets[sheetName];
+        if (!sheet) {
+          statusEl.textContent = "❌ 找不到工作表: " + sheetName;
+          translationsMap = {};
+          fillLangSelect([]);
+          applyBtn.disabled = true;
+          return false;
+        }
+
+        const rows = XLSX.utils.sheet_to_json(sheet);
+        if (rows.length === 0) {
+          statusEl.textContent = "❌ 当前工作表为空: " + sheetName;
+          translationsMap = {};
+          fillLangSelect([]);
+          applyBtn.disabled = true;
+          return false;
+        }
+
+        const headerKeys = Object.keys(rows[0]);
+        const idCol = resolveIdColumn(headerKeys);
+        if (idCol === null) {
+          statusEl.textContent =
+            "❌ 工作表「" +
+            sheetName +
+            "」表头需包含列名 key 或 HEAD（区分大小写）";
+          translationsMap = {};
+          fillLangSelect([]);
+          applyBtn.disabled = true;
+          return false;
+        }
+
+        const langs = headerKeys.filter((k) => k !== idCol);
+        if (langs.length === 0) {
+          statusEl.textContent =
+            "❌ 工作表「" + sheetName + "」在标识列外没有语言列";
+          translationsMap = {};
+          fillLangSelect([]);
+          applyBtn.disabled = true;
+          return false;
+        }
+
+        fillLangSelect(langs);
+        translationsMap = {};
+        rows.forEach((r) => {
+          const idVal = r[idCol];
+          if (idVal !== undefined && idVal !== null && String(idVal) !== "") {
+            translationsMap[String(idVal)] = r;
+          }
+        });
+        applyBtn.disabled = false;
+        statusEl.textContent =
+          "✅ 工作表「" + sheetName + "」，语言列: " + langs.join(", ");
+        return true;
+      }
+
+      sheetSelect.addEventListener("change", () => {
+        loadSheetByName(sheetSelect.value);
+      });
+
+      langSelect.addEventListener("change", (ev) => {
+        selectedLang = ev.target.value;
+      });
 
       document
         .getElementById("fileInput")
@@ -48,48 +155,25 @@
 
           try {
             const data = await file.arrayBuffer();
-            const workbook = XLSX.read(data, { type: "array" });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const rows = XLSX.utils.sheet_to_json(sheet);
+            currentWorkbook = XLSX.read(data, { type: "array" });
+            const names = currentWorkbook.SheetNames || [];
 
-            // rows: [{key: "title", zh_CN: "欢迎使用", en_US: "Welcome"} ...]
-            if (rows.length === 0) {
-              document.getElementById("status").textContent = "❌ 表格为空";
+            if (names.length === 0) {
+              statusEl.textContent = "❌ 文件中没有工作表";
+              fillSelectOptions(sheetSelect, []);
+              fillLangSelect([]);
+              applyBtn.disabled = true;
               return;
             }
 
-            const langs = Object.keys(rows[0]).filter((k) => k !== "key");
-            if (langs.length === 0) {
-              document.getElementById("status").textContent =
-                "❌ 没有找到语言列";
-              return;
-            }
-
-            // 生成语言下拉框
-            const langSelect = document.getElementById("langSelect");
-            langSelect.innerHTML = langs
-              .map((l) => `<option value="${l}">${l}</option>`)
-              .join("");
-            langSelect.disabled = false;
-            selectedLang = langs[0];
-
-            langSelect.onchange = (ev) => {
-              selectedLang = ev.target.value;
-            };
-
-            // 保存翻译表
-            translationsMap = {};
-            rows.forEach((r) => {
-              translationsMap[r.key] = r;
-            });
-
-            document.getElementById("applyBtn").disabled = false;
-            document.getElementById(
-              "status"
-            ).textContent = `✅ 已加载表格，检测到语言: ${langs.join(", ")}`;
+            fillSelectOptions(sheetSelect, names);
+            loadSheetByName(names[0]);
           } catch (err) {
-            document.getElementById("status").textContent =
-              "❌ 文件解析失败: " + err.message;
+            statusEl.textContent = "❌ 文件解析失败: " + err.message;
+            currentWorkbook = null;
+            fillSelectOptions(sheetSelect, []);
+            fillLangSelect([]);
+            applyBtn.disabled = true;
           }
         });
 
@@ -100,7 +184,7 @@
         }
         parent.postMessage(
           { pluginMessage: { type: "apply-translations", translations } },
-          "*"
+          "*",
         );
       };
 
