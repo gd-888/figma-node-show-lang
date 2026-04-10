@@ -122,6 +122,12 @@ async function applyRichText(node, config) {
         offset = end;
     }
 }
+const SHEET_CSV_WORKER_ORIGIN = "https://steep-pond-4195.wgd-f3e.workers.dev";
+function buildSheetCsvWorkerUrl(spreadsheetId, gid) {
+    const g = gid !== undefined && gid !== "" ? gid : "0";
+    return (`${SHEET_CSV_WORKER_ORIGIN}/?sheetId=${encodeURIComponent(spreadsheetId)}` +
+        `&gid=${encodeURIComponent(g)}`);
+}
 async function traverse(node, translations) {
     if ("children" in node) {
         for (const child of node.children) {
@@ -153,5 +159,42 @@ figma.ui.onmessage = async (msg) => {
     else if (msg.type === "cancel") {
         figma.closePlugin();
     }
+    else if (msg.type === "fetch-public-sheet-csv") {
+        const { spreadsheetId, gid } = msg;
+        try {
+            const exportUrl = buildSheetCsvWorkerUrl(spreadsheetId, gid);
+            const res = await fetch(exportUrl, {
+                method: "GET",
+                redirect: "follow",
+            });
+            const text = await res.text();
+            if (!res.ok) {
+                figma.ui.postMessage({
+                    type: "public-sheet-csv-error",
+                    status: res.status,
+                    message: `HTTP ${res.status} ${res.statusText}`,
+                });
+                return;
+            }
+            const head = text.replace(/^\s+/, "").slice(0, 200).toLowerCase();
+            if (head.startsWith("<") ||
+                head.includes("<!doctype") ||
+                head.includes("<html")) {
+                figma.ui.postMessage({
+                    type: "public-sheet-csv-error",
+                    message: "返回内容不是 CSV。请确认表格已公开可读，或检查 Worker 是否正常",
+                });
+                return;
+            }
+            figma.ui.postMessage({ type: "public-sheet-csv-ok", csv: text });
+        }
+        catch (e) {
+            const err = e;
+            figma.ui.postMessage({
+                type: "public-sheet-csv-error",
+                message: err.message || String(e),
+            });
+        }
+    }
 };
-figma.showUI(__html__, { width: 400, height: 300 });
+figma.showUI(__html__, { width: 450, height: 460 });

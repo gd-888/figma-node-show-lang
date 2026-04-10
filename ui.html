@@ -15,6 +15,29 @@
       input[type="file"] {
         margin: 10px 0;
       }
+      input[type="url"],
+      input[type="text"] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px;
+        margin-top: 6px;
+      }
+      .url-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        align-items: stretch;
+      }
+      .url-row input {
+        flex: 1;
+        margin-top: 0;
+      }
+      .url-row button {
+        margin-top: 0;
+        width: auto;
+        min-width: 88px;
+        flex-shrink: 0;
+      }
       select,
       button {
         margin-top: 10px;
@@ -32,6 +55,21 @@
     <h3>多语言替换工具</h3>
     <input type="file" id="fileInput" accept=".csv,.xlsx" />
     <label
+      for="sheetUrlInput"
+      style="display: block; margin-top: 12px; font-size: 12px; color: #333"
+      >或粘贴公开 Google 表格链接（经 Cloudflare Worker 取 CSV，无需 API
+      Key）</label
+    >
+    <div class="url-row">
+      <input
+        type="url"
+        id="sheetUrlInput"
+        placeholder="https://docs.google.com/spreadsheets/d/..."
+        autocomplete="off"
+      />
+      <button type="button" id="loadUrlBtn">从链接加载</button>
+    </div>
+    <label
       for="sheetSelect"
       style="display: block; margin-top: 8px; font-size: 12px; color: #333"
       >工作表</label
@@ -45,12 +83,15 @@
     <select id="langSelect" disabled></select>
     <button id="applyBtn" disabled>应用翻译</button>
     <button id="cancelBtn">取消</button>
-    <div id="status">请先上传 CSV / Excel 表格</div>
+    <div id="status">
+      本地上传；或表格公开可读后粘贴链接（Worker：sheetId + gid，一次一个子表）
+    </div>
 
     <script>
       let translationsMap = {};
       let selectedLang = "";
       let currentWorkbook = null;
+      let publicSheetLoadPending = false;
 
       const sheetSelect = document.getElementById("sheetSelect");
       const langSelect = document.getElementById("langSelect");
@@ -139,6 +180,120 @@
         return true;
       }
 
+      function applyWorkbookArrayBuffer(data, parseErrorPrefix) {
+        try {
+          currentWorkbook = XLSX.read(data, { type: "array" });
+          const names = currentWorkbook.SheetNames || [];
+
+          if (names.length === 0) {
+            statusEl.textContent =
+              (parseErrorPrefix || "") + "❌ 没有解析到工作表";
+            fillSelectOptions(sheetSelect, []);
+            fillLangSelect([]);
+            applyBtn.disabled = true;
+            return;
+          }
+
+          fillSelectOptions(sheetSelect, names);
+          loadSheetByName(names[0]);
+        } catch (err) {
+          statusEl.textContent =
+            (parseErrorPrefix || "") + "❌ 解析失败: " + err.message;
+          currentWorkbook = null;
+          fillSelectOptions(sheetSelect, []);
+          fillLangSelect([]);
+          applyBtn.disabled = true;
+        }
+      }
+
+      /**
+       * 从 Google 表格浏览器链接解析表格 ID 与可选 gid（子表）。
+       * 不支持 Google 文档（Docs）正文链接。
+       */
+      function parseGoogleSheetsLink(raw) {
+        const s = String(raw || "").trim();
+        if (!s) return { error: "请先粘贴链接" };
+        let url;
+        try {
+          url = new URL(s);
+        } catch {
+          return { error: "链接格式无效" };
+        }
+        if (url.hostname !== "docs.google.com") {
+          return { error: "请使用 docs.google.com 下的 Google 表格链接" };
+        }
+        const docPath = url.pathname.match(/\/document\/d\/([a-zA-Z0-9-_]+)/);
+        if (docPath) {
+          return {
+            error:
+              "当前为 Google 文档链接，请改用 Google 表格（Sheets），或导出后本地上传",
+          };
+        }
+        const sheetPath = url.pathname.match(
+          /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/,
+        );
+        if (!sheetPath) {
+          return { error: "未识别为 Google 表格链接" };
+        }
+        let gid = url.searchParams.get("gid") || undefined;
+        if (!gid && url.hash) {
+          const hm = url.hash.match(/gid=(\d+)/);
+          if (hm) gid = hm[1];
+        }
+        return { spreadsheetId: sheetPath[1], gid };
+      }
+
+      function applyPublicCsvText(csv) {
+        try {
+          currentWorkbook = XLSX.read(csv, { type: "string", raw: false });
+          const names = currentWorkbook.SheetNames || [];
+          if (names.length === 0) {
+            statusEl.textContent = "❌ CSV 未解析出工作表";
+            currentWorkbook = null;
+            fillSelectOptions(sheetSelect, []);
+            fillLangSelect([]);
+            applyBtn.disabled = true;
+            return;
+          }
+          fillSelectOptions(sheetSelect, names);
+          const ok = loadSheetByName(names[0]);
+          if (ok) {
+            statusEl.textContent =
+              statusEl.textContent +
+              " · 当前为链接中的子表（gid）；换子表请打开对应标签页再复制链接";
+          }
+        } catch (err) {
+          statusEl.textContent = "❌ CSV 解析失败: " + err.message;
+          currentWorkbook = null;
+          fillSelectOptions(sheetSelect, []);
+          fillLangSelect([]);
+          applyBtn.disabled = true;
+        }
+      }
+
+      function loadFromGoogleSheetsUrl() {
+        const parsed = parseGoogleSheetsLink(
+          document.getElementById("sheetUrlInput").value,
+        );
+        if (parsed.error) {
+          statusEl.textContent = "❌ " + parsed.error;
+          return;
+        }
+        if (publicSheetLoadPending) return;
+        publicSheetLoadPending = true;
+        statusEl.textContent = "正在从 Worker 获取 CSV…";
+        parent.postMessage(
+          {
+            pluginMessage: {
+              type: "fetch-public-sheet-csv",
+              spreadsheetId: parsed.spreadsheetId,
+              gid: parsed.gid,
+            },
+          },
+          "*",
+        );
+      }
+
       sheetSelect.addEventListener("change", () => {
         loadSheetByName(sheetSelect.value);
       });
@@ -146,6 +301,19 @@
       langSelect.addEventListener("change", (ev) => {
         selectedLang = ev.target.value;
       });
+
+      document.getElementById("loadUrlBtn").addEventListener("click", () => {
+        loadFromGoogleSheetsUrl();
+      });
+
+      document
+        .getElementById("sheetUrlInput")
+        .addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            loadFromGoogleSheetsUrl();
+          }
+        });
 
       document
         .getElementById("fileInput")
@@ -155,21 +323,9 @@
 
           try {
             const data = await file.arrayBuffer();
-            currentWorkbook = XLSX.read(data, { type: "array" });
-            const names = currentWorkbook.SheetNames || [];
-
-            if (names.length === 0) {
-              statusEl.textContent = "❌ 文件中没有工作表";
-              fillSelectOptions(sheetSelect, []);
-              fillLangSelect([]);
-              applyBtn.disabled = true;
-              return;
-            }
-
-            fillSelectOptions(sheetSelect, names);
-            loadSheetByName(names[0]);
+            applyWorkbookArrayBuffer(data, "");
           } catch (err) {
-            statusEl.textContent = "❌ 文件解析失败: " + err.message;
+            statusEl.textContent = "❌ 读取文件失败: " + err.message;
             currentWorkbook = null;
             fillSelectOptions(sheetSelect, []);
             fillLangSelect([]);
@@ -191,6 +347,21 @@
       document.getElementById("cancelBtn").onclick = () => {
         parent.postMessage({ pluginMessage: { type: "cancel" } }, "*");
       };
+
+      window.addEventListener("message", (event) => {
+        const pm = event.data && event.data.pluginMessage;
+        if (!pm || typeof pm !== "object") return;
+        if (pm.type === "public-sheet-csv-ok") {
+          publicSheetLoadPending = false;
+          applyPublicCsvText(pm.csv);
+        } else if (pm.type === "public-sheet-csv-error") {
+          publicSheetLoadPending = false;
+          let t = "❌ " + (pm.message || "下载失败");
+          if (pm.status) t += "（HTTP " + pm.status + "）";
+          t += "。请确认表格已设为「知道链接的任何人可查看」，或改用本地上传。";
+          statusEl.textContent = t;
+        }
+      });
     </script>
   </body>
 </html>
