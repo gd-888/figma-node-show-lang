@@ -185,8 +185,7 @@ async function applyRichText(node: TextNode, config: string) {
 }
 
 /** Cloudflare Worker 拉取公开表格为 CSV（?sheetId=&gid=） */
-const SHEET_CSV_WORKER_ORIGIN =
-  "https://steep-pond-4195.wgd-f3e.workers.dev";
+const SHEET_CSV_WORKER_ORIGIN = "https://gami88.store";
 
 function buildSheetCsvWorkerUrl(spreadsheetId: string, gid?: string): string {
   const g = gid !== undefined && gid !== "" ? gid : "0";
@@ -219,12 +218,59 @@ async function traverse(node: SceneNode, translations: Record<string, string>) {
   }
 }
 
+const UI_PREFS_STORAGE_KEY = "langReplacerUiPrefs";
+
+interface UiPrefs {
+  sheetUrl: string;
+  applyWholePage: boolean;
+}
+
+async function getUiPrefs(): Promise<UiPrefs> {
+  const raw = (await figma.clientStorage.getAsync(UI_PREFS_STORAGE_KEY)) as
+    | Partial<UiPrefs>
+    | undefined;
+  return {
+    sheetUrl: typeof raw?.sheetUrl === "string" ? raw.sheetUrl : "",
+    applyWholePage: raw?.applyWholePage === true,
+  };
+}
+
+async function saveUiPrefs(prefs: Partial<UiPrefs>) {
+  const old = await getUiPrefs();
+  const merged: UiPrefs = {
+    sheetUrl: prefs.sheetUrl !== undefined ? prefs.sheetUrl : old.sheetUrl,
+    applyWholePage:
+      prefs.applyWholePage !== undefined
+        ? prefs.applyWholePage
+        : old.applyWholePage,
+  };
+  await figma.clientStorage.setAsync(UI_PREFS_STORAGE_KEY, merged);
+}
+
 // 监听来自 UI 的消息
 figma.ui.onmessage = async (msg) => {
   if (msg.type === "apply-translations") {
     const translations = msg.translations as Record<string, string>;
-    await traverse(figma.currentPage as any, translations);
-    figma.notify("多语言替换完成 ✅");
+    const applyWholePage =
+      (msg as { applyWholePage?: boolean }).applyWholePage === true;
+    const selectedNodes = figma.currentPage.selection as SceneNode[];
+    if (!applyWholePage && selectedNodes.length === 0) {
+      figma.notify("未选中任何节点，已中断执行", { error: true });
+      figma.ui.postMessage({
+        type: "apply-aborted-no-selection",
+      });
+      return;
+    }
+    const targetNodes = applyWholePage
+      ? [figma.currentPage as unknown as SceneNode]
+      : selectedNodes;
+
+    for (const node of targetNodes) {
+      await traverse(node, translations);
+    }
+    figma.notify(
+      applyWholePage ? "整页多语言替换完成 ✅" : "选中节点替换完成 ✅",
+    );
   } else if (msg.type === "cancel") {
     figma.closePlugin();
   } else if (msg.type === "fetch-public-sheet-csv") {
@@ -267,6 +313,18 @@ figma.ui.onmessage = async (msg) => {
         type: "public-sheet-csv-error",
         message: err.message || String(e),
       });
+    }
+  } else if (msg.type === "get-ui-prefs") {
+    figma.ui.postMessage({
+      type: "ui-prefs",
+      prefs: await getUiPrefs(),
+    });
+  } else if (msg.type === "save-ui-prefs") {
+    const payload = msg as {
+      prefs?: Partial<UiPrefs>;
+    };
+    if (payload.prefs) {
+      await saveUiPrefs(payload.prefs);
     }
   }
 };

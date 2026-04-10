@@ -122,7 +122,7 @@ async function applyRichText(node, config) {
         offset = end;
     }
 }
-const SHEET_CSV_WORKER_ORIGIN = "https://steep-pond-4195.wgd-f3e.workers.dev";
+const SHEET_CSV_WORKER_ORIGIN = "https://gami88.store";
 function buildSheetCsvWorkerUrl(spreadsheetId, gid) {
     const g = gid !== undefined && gid !== "" ? gid : "0";
     return (`${SHEET_CSV_WORKER_ORIGIN}/?sheetId=${encodeURIComponent(spreadsheetId)}` +
@@ -150,11 +150,43 @@ async function traverse(node, translations) {
         }
     }
 }
+const UI_PREFS_STORAGE_KEY = "langReplacerUiPrefs";
+async function getUiPrefs() {
+    const raw = (await figma.clientStorage.getAsync(UI_PREFS_STORAGE_KEY));
+    return {
+        sheetUrl: typeof (raw === null || raw === void 0 ? void 0 : raw.sheetUrl) === "string" ? raw.sheetUrl : "",
+        applyWholePage: (raw === null || raw === void 0 ? void 0 : raw.applyWholePage) === true,
+    };
+}
+async function saveUiPrefs(prefs) {
+    const old = await getUiPrefs();
+    const merged = {
+        sheetUrl: prefs.sheetUrl !== undefined ? prefs.sheetUrl : old.sheetUrl,
+        applyWholePage: prefs.applyWholePage !== undefined
+            ? prefs.applyWholePage
+            : old.applyWholePage,
+    };
+    await figma.clientStorage.setAsync(UI_PREFS_STORAGE_KEY, merged);
+}
 figma.ui.onmessage = async (msg) => {
     if (msg.type === "apply-translations") {
         const translations = msg.translations;
-        await traverse(figma.currentPage, translations);
-        figma.notify("多语言替换完成 ✅");
+        const applyWholePage = msg.applyWholePage === true;
+        const selectedNodes = figma.currentPage.selection;
+        if (!applyWholePage && selectedNodes.length === 0) {
+            figma.notify("未选中任何节点，已中断执行", { error: true });
+            figma.ui.postMessage({
+                type: "apply-aborted-no-selection",
+            });
+            return;
+        }
+        const targetNodes = applyWholePage
+            ? [figma.currentPage]
+            : selectedNodes;
+        for (const node of targetNodes) {
+            await traverse(node, translations);
+        }
+        figma.notify(applyWholePage ? "整页多语言替换完成 ✅" : "选中节点替换完成 ✅");
     }
     else if (msg.type === "cancel") {
         figma.closePlugin();
@@ -194,6 +226,18 @@ figma.ui.onmessage = async (msg) => {
                 type: "public-sheet-csv-error",
                 message: err.message || String(e),
             });
+        }
+    }
+    else if (msg.type === "get-ui-prefs") {
+        figma.ui.postMessage({
+            type: "ui-prefs",
+            prefs: await getUiPrefs(),
+        });
+    }
+    else if (msg.type === "save-ui-prefs") {
+        const payload = msg;
+        if (payload.prefs) {
+            await saveUiPrefs(payload.prefs);
         }
     }
 };

@@ -7,10 +7,7 @@
   "editorType": ["figma"],
   "documentAccess": "dynamic-page",
   "networkAccess": {
-    "allowedDomains": [
-      "https://cdn.jsdelivr.net",
-      "https://steep-pond-4195.wgd-f3e.workers.dev"
-    ],
+    "allowedDomains": ["https://cdn.jsdelivr.net", "https://gami88.store"],
     "reasoning": "从 cdn.jsdelivr.net 加载 SheetJS；在插件主线程请求 Cloudflare Worker 获取公开 Google 表格的 CSV（sheetId/gid），避免 UI null origin 的 CORS。"
   }
 }

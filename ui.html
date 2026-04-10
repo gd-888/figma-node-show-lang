@@ -81,6 +81,10 @@
       >语言列</label
     >
     <select id="langSelect" disabled></select>
+    <label style="display: block; margin-top: 8px; font-size: 12px; color: #333">
+      <input type="checkbox" id="applyWholePageCheckbox" />
+      刷新整个页面（默认仅刷新当前选中节点）
+    </label>
     <button id="applyBtn" disabled>应用翻译</button>
     <button id="cancelBtn">取消</button>
     <div id="status">
@@ -97,6 +101,17 @@
       const langSelect = document.getElementById("langSelect");
       const applyBtn = document.getElementById("applyBtn");
       const statusEl = document.getElementById("status");
+      const sheetUrlInput = document.getElementById("sheetUrlInput");
+      const applyWholePageCheckbox = document.getElementById(
+        "applyWholePageCheckbox",
+      );
+
+      function saveUiPrefsPatch(prefsPatch) {
+        parent.postMessage(
+          { pluginMessage: { type: "save-ui-prefs", prefs: prefsPatch } },
+          "*",
+        );
+      }
 
       function fillSelectOptions(selectEl, values) {
         selectEl.innerHTML = "";
@@ -272,9 +287,9 @@
       }
 
       function loadFromGoogleSheetsUrl() {
-        const parsed = parseGoogleSheetsLink(
-          document.getElementById("sheetUrlInput").value,
-        );
+        const urlText = sheetUrlInput.value;
+        saveUiPrefsPatch({ sheetUrl: urlText });
+        const parsed = parseGoogleSheetsLink(urlText);
         if (parsed.error) {
           statusEl.textContent = "❌ " + parsed.error;
           return;
@@ -315,6 +330,16 @@
           }
         });
 
+      sheetUrlInput.addEventListener("change", () => {
+        saveUiPrefsPatch({ sheetUrl: sheetUrlInput.value });
+      });
+
+      applyWholePageCheckbox.addEventListener("change", () => {
+        saveUiPrefsPatch({
+          applyWholePage: applyWholePageCheckbox.checked,
+        });
+      });
+
       document
         .getElementById("fileInput")
         .addEventListener("change", async (e) => {
@@ -339,7 +364,13 @@
           translations[key] = translationsMap[key][selectedLang];
         }
         parent.postMessage(
-          { pluginMessage: { type: "apply-translations", translations } },
+          {
+            pluginMessage: {
+              type: "apply-translations",
+              translations,
+              applyWholePage: applyWholePageCheckbox.checked,
+            },
+          },
           "*",
         );
       };
@@ -351,7 +382,13 @@
       window.addEventListener("message", (event) => {
         const pm = event.data && event.data.pluginMessage;
         if (!pm || typeof pm !== "object") return;
-        if (pm.type === "public-sheet-csv-ok") {
+        if (pm.type === "ui-prefs") {
+          const prefs = pm.prefs || {};
+          if (typeof prefs.sheetUrl === "string") {
+            sheetUrlInput.value = prefs.sheetUrl;
+          }
+          applyWholePageCheckbox.checked = prefs.applyWholePage === true;
+        } else if (pm.type === "public-sheet-csv-ok") {
           publicSheetLoadPending = false;
           applyPublicCsvText(pm.csv);
         } else if (pm.type === "public-sheet-csv-error") {
@@ -360,8 +397,12 @@
           if (pm.status) t += "（HTTP " + pm.status + "）";
           t += "。请确认表格已设为「知道链接的任何人可查看」，或改用本地上传。";
           statusEl.textContent = t;
+        } else if (pm.type === "apply-aborted-no-selection") {
+          statusEl.textContent = "❌ 未选中任何节点，已中断执行。请先选中节点或勾选“刷新整个页面”。";
         }
       });
+
+      parent.postMessage({ pluginMessage: { type: "get-ui-prefs" } }, "*");
     </script>
   </body>
 </html>
