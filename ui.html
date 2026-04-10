@@ -57,14 +57,13 @@
     <label
       for="sheetUrlInput"
       style="display: block; margin-top: 12px; font-size: 12px; color: #333"
-      >或粘贴公开 Google 表格链接（经 Cloudflare Worker 取 CSV，无需 API
-      Key）</label
+      >或粘贴公开 Google 表格链接</label
     >
     <div class="url-row">
       <input
         type="url"
         id="sheetUrlInput"
-        placeholder="https://docs.google.com/spreadsheets/d/..."
+        placeholder="请输入google表格链接,xxxx/sheetId和gid"
         autocomplete="off"
       />
       <button type="button" id="loadUrlBtn">从链接加载</button>
@@ -81,14 +80,16 @@
       >语言列</label
     >
     <select id="langSelect" disabled></select>
-    <label style="display: block; margin-top: 8px; font-size: 12px; color: #333">
+    <label
+      style="display: block; margin-top: 8px; font-size: 12px; color: #333"
+    >
       <input type="checkbox" id="applyWholePageCheckbox" />
       刷新整个页面（默认仅刷新当前选中节点）
     </label>
     <button id="applyBtn" disabled>应用翻译</button>
     <button id="cancelBtn">取消</button>
     <div id="status">
-      本地上传；或表格公开可读后粘贴链接（Worker：sheetId + gid，一次一个子表）
+      本地上传；或表格公开可读后粘贴链接（sheetId + gid，一次一个子表）
     </div>
 
     <script>
@@ -296,7 +297,7 @@
         }
         if (publicSheetLoadPending) return;
         publicSheetLoadPending = true;
-        statusEl.textContent = "正在从 Worker 获取 CSV…";
+        statusEl.textContent = "正在获取 CSV…";
         parent.postMessage(
           {
             pluginMessage: {
@@ -398,7 +399,8 @@
           t += "。请确认表格已设为「知道链接的任何人可查看」，或改用本地上传。";
           statusEl.textContent = t;
         } else if (pm.type === "apply-aborted-no-selection") {
-          statusEl.textContent = "❌ 未选中任何节点，已中断执行。请先选中节点或勾选“刷新整个页面”。";
+          statusEl.textContent =
+            "❌ 未选中任何节点，已中断执行。请先选中节点或勾选“刷新整个页面”。";
         }
       });
 
